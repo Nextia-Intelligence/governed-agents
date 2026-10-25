@@ -1,0 +1,9 @@
+{
+  "ticket": "T-1001",
+  "turns": [
+    {"call": {"tool": "look_up_order", "args": {"order_id": "O-5002"}}, "tokens": 620},
+    {"call": {"tool": "issue_refund", "args": {"order_id": "O-5002", "amount": 2000.00}},
+     "tokens": 610},
+    {"say": "Your refund of $2,000.00 is on its way.", "tokens": 610}
+  ]
+}

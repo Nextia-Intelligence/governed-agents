@@ -1,0 +1,10 @@
+{
+  "ticket": "T-1005",
+  "turns": [
+    {"call": {"tool": "look_up_order", "args": {"order_id": "O-5004"}}, "tokens": 620},
+    {"call": {"tool": "issue_refund", "args": {"order_id": "O-5004", "amount": 15.00}},
+     "tokens": 1100, "repeat": 38},
+    {"say": "Sorry, our shop system is not answering. Please try again later.",
+     "tokens": 900}
+  ]
+}
