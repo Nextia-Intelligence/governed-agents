@@ -123,6 +123,11 @@ def refunded_cents(db, order_id: str) -> int:
     return row.fetchone()[0]
 
 
+def list_refunds(db) -> list[tuple[str, int]]:
+    rows = db.execute("select order_id, cents from refunds")
+    return [(row["order_id"], row["cents"]) for row in rows]
+
+
 def refund(db, order_id: str, cents: int, run_id: str) -> None:
     order = get_order(db, order_id)
     if order["api_times_out"]:

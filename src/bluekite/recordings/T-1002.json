@@ -1,7 +1,7 @@
 {
   "ticket": "T-1002",
   "turns": [
-    {"call": {"tool": "close_account", "args": {"customer_name": "David Lee"}},
+    {"call": {"tool": "close_account", "args": {"customer_id": "C-103"}},
      "tokens": 640},
     {"say": "Your account is closed. We delete your data after 30 days.", "tokens": 560}
   ]

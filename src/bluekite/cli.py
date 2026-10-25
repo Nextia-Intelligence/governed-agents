@@ -4,6 +4,7 @@ import argparse
 
 from bluekite import shop
 from bluekite.agent import run_ticket
+from bluekite.governance.registry import REGISTRY
 from bluekite.model import LiveModel, ReplayModel
 from bluekite.tickets import get_ticket, load_tickets
 
@@ -47,6 +48,13 @@ def cmd_changes(args) -> None:
         print(f"{row['run_id']}  {row['kind']:<8}{row['target']:<8}{row['detail']}")
 
 
+def cmd_tools(args) -> None:
+    print(f"{'tool':<16}{'kind':<7}{'risk':<8}{'scope':<17}undo")
+    for spec in REGISTRY.values():
+        print(f"{spec.name:<16}{spec.kind:<7}{spec.risk:<8}{spec.scope:<17}"
+              f"{spec.undo}")
+
+
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="bluekite", description="Sam at Blue Kite")
     p.add_argument("--live", action="store_true", help="use a live model endpoint")
@@ -59,6 +67,8 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("tickets", nargs="*")
     run.add_argument("--all", action="store_true")
     run.set_defaults(func=cmd_run)
+    sub.add_parser("tools", help="Sam's tools, from the registry").set_defaults(
+        func=cmd_tools)
     sub.add_parser("changes", help="what changed since the reset").set_defaults(
         func=cmd_changes)
     return p

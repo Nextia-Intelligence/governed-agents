@@ -27,13 +27,16 @@ class Trace:
         self._flush()
         self.out(text)
 
-    def step(self, call: Call, summary: str) -> None:
+    def step(self, call: Call, result) -> None:
+        # A blocked call has its own mark (✋, ⏸ or ⛔); a result gets "← ".
+        blocked = result.status in ("denied", "paused", "stopped")
+        summary = result.summary if blocked else f"← {result.summary}"
         pair = (show_call(call), summary)
         if pair == self.last:
             self.folded += 1
             return
         self.line(f"→ {pair[0]}")
-        self.out(f"← {pair[1]}")
+        self.out(pair[1])
         self.last = pair
 
     def _flush(self) -> None:
