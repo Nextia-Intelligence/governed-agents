@@ -1,6 +1,6 @@
 """Sam's four tools. They take ids, not names, and call the shop with a token."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from bluekite import shop, shop_api
 from bluekite.governance.credentials import Token
@@ -14,6 +14,7 @@ class Result:
     summary: str  # one short line for the trace
     data: dict  # what the model sees
     note: str = ""  # an extra line for the trace, for example an approval
+    decided: dict = field(default_factory=dict)  # which control decided, and how
 
 
 def plural(count: int, word: str) -> str:

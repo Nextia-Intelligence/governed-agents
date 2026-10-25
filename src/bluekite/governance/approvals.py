@@ -3,8 +3,8 @@
 import hashlib
 import json
 
-from bluekite import clock, shop
-from bluekite.governance import budgets
+from bluekite import clock, runs, shop
+from bluekite.governance import audit, budgets
 from bluekite.governance.policy import Decision
 from bluekite.model import Call
 from bluekite.money import dollars
@@ -95,7 +95,16 @@ def decide(db, approval_id: str, status: str, by: str) -> dict:
         "update approvals set status = ?, decided_by = ?, decided_at = ? "
         "where id = ?", (status, by, clock.now().isoformat(), approval_id))
     db.commit()
+    record_decision(db, approval, status, by)
     return get(db, approval_id)
+
+
+def record_decision(db, approval: dict, status: str, by: str) -> None:
+    """The decision goes into the audit chain: who, when, which request, which call."""
+    audit.record(db, runs.load(db, approval["run_id"]), "decide",
+                 approval=approval["id"], decision=status, by=by,
+                 tool=approval["tool"], args_hash=approval["args_hash"],
+                 rule=approval["rule"])
 
 
 def list_all(db, everything: bool = False) -> list[dict]:

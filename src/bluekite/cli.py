@@ -9,7 +9,8 @@ from dataclasses import replace
 from bluekite import shop
 from bluekite.clock import FIXED
 from bluekite.agent import resume_run, run_ticket
-from bluekite.governance import approvals, budgets, cedar_policy, guard
+from bluekite.governance import approvals, audit, budgets, cedar_policy, guard
+from bluekite.governance.replay import replay
 from bluekite.governance.identity import Identity
 from bluekite.governance.registry import REGISTRY
 from bluekite.model import Call, cost
@@ -202,6 +203,50 @@ def cmd_budget(args) -> None:
     print(f"  kill switch     {'on · ' + kill.reason if kill else 'off'}")
 
 
+def cmd_audit(args) -> None:
+    if args.target == "verify":
+        ok, message = audit.verify()
+        print(f"audit log {message}")
+        raise SystemExit(0 if ok else 1)
+    events = audit.for_run(args.target)
+    if not events:
+        raise SystemExit(f"no audit events for {args.target}")
+    for event in events:
+        print(f"#{event['seq']:<4}{event['kind']:<7}{describe(event)} · "
+              f"{event['hash'][:8]}")
+
+
+def describe(e: dict) -> str:
+    """One short line per audit event."""
+    if e["kind"] in ("start", "resume"):
+        return f"{e['agent']} for {e['for'] or 'unknown sender'} · ticket {e['ticket']}"
+    if e["kind"] == "call":
+        d = e["decided"]
+        rule = "" if d["effect"] == "allow" else f" {d['rule']}"
+        return f"{e['tool']} · {d['by']} {d['effect']}{rule} · {e['status']}"
+    if e["kind"] == "flag":
+        return f"{e['source']} · {', '.join(e['found'])}"
+    if e["kind"] == "decide":
+        return (f"{e['approval']} {e['decision']} by {e['by']} · {e['tool']} · "
+                f"args {e['args_hash'][:12]}")
+    if e["kind"] == "stop":
+        return f"{e['decided']['by']} {e['decided']['rule']}"
+    if e["kind"] == "reply":
+        return e["text"] if len(e["text"]) <= 44 else e["text"][:43] + "…"
+    return (f"{e['status']} · steps {e['steps']} · tokens {e['tokens']:,} · "
+            f"cost ${e['cost']:.3f}")
+
+
+def cmd_replay(args) -> None:
+    events = audit.for_run(args.run)
+    if not events:
+        raise SystemExit(f"no audit events for {args.run}")
+    ok, _ = audit.verify()
+    print(f"replay of run {args.run} · {len(events)} audit events · "
+          f"chain {'intact' if ok else 'BROKEN'}")
+    replay(events)
+
+
 def command(sub, name: str, func, text: str) -> argparse.ArgumentParser:
     cmd = sub.add_parser(name, help=text)
     cmd.set_defaults(func=func)
@@ -258,6 +303,13 @@ def add_budget_commands(sub) -> None:
     budget.add_argument("agent", nargs="?", default="sam")
 
 
+def add_audit_commands(sub) -> None:
+    log = command(sub, "audit", cmd_audit, "show a run's audit events, or verify")
+    log.add_argument("target", help="a run id, or: verify")
+    again = command(sub, "replay", cmd_replay, "replay a run from the audit log")
+    again.add_argument("run")
+
+
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="bluekite", description="Sam at Blue Kite")
     p.add_argument("--live", action="store_true", help="use a live model endpoint")
@@ -267,6 +319,7 @@ def parser() -> argparse.ArgumentParser:
     add_guard_commands(sub)
     add_approval_commands(sub)
     add_budget_commands(sub)
+    add_audit_commands(sub)
     return p
 
 

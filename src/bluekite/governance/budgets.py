@@ -28,6 +28,12 @@ class Stop:
     control: str  # "kill switch", "budget"
     reason: str  # for example "loop · the same call 3 times"
 
+    def decided(self) -> dict:
+        rule = self.reason.split(" · ")[0]  # "loop", "steps", "time", "cost"
+        if self.control == "kill switch":
+            rule = "kill switch"
+        return {"by": self.control, "effect": "stop", "rule": rule}
+
     def mark(self) -> str:
         if self.control == "kill switch":
             return f"⛔ kill switch: {self.reason}"

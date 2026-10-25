@@ -8,9 +8,9 @@ from bluekite.governance import (approvals, budgets, credentials, guard, registr
 from bluekite.governance.identity import Identity, identify
 from bluekite.governance.policy import Decision
 from bluekite.model import Call, Model
+from bluekite.recorder import Recorder
 from bluekite.runs import Run
 from bluekite.tools import Result
-from bluekite.trace import Trace
 
 SYSTEM = (
     "You are Sam, the support agent of Blue Kite, a small online kite shop. "
@@ -37,12 +37,10 @@ def start_run(db, ticket: dict) -> Run:
 
 def run_ticket(db, ticket: dict, model: Model, out=print) -> Run:
     run = start_run(db, ticket)
-    me = run.identity
-    trace = Trace(out)
-    trace.line(f"ticket {ticket['id']} · agent {me.agent} · run {me.run_id} · "
-               f"{me.label()}")
-    flag(trace, run, "ticket", ticket["text"])
-    return work(db, run, model, trace)
+    rec = Recorder(db, run, out)
+    rec.start()
+    flag(rec, run, "ticket", ticket["text"])
+    return work(db, run, model, rec)
 
 
 def resume_run(db, run_id: str, model: Model, out=print) -> Run:
@@ -50,23 +48,22 @@ def resume_run(db, run_id: str, model: Model, out=print) -> Run:
     run = runs.load(db, run_id)
     if run.status != "paused":
         raise SystemExit(f"run {run_id} is {run.status}, not paused")
-    trace = Trace(out)
-    trace.line(f"resume run {run_id} · ticket {run.ticket['id']} · "
-               f"{run.identity.label()}")
+    rec = Recorder(db, run, out)
+    rec.resume()
     run.started = clock.now().isoformat()  # waiting for a person is not run time
     call = Call(**run.pending)
     result = use_tool(db, run, call)
-    trace.step(call, result)
-    settle(run, call, result, trace)
-    return work(db, run, model, trace)
+    rec.step(call, result)
+    settle(run, call, result, rec)
+    return work(db, run, model, rec)
 
 
-def work(db, run: Run, model: Model, trace: Trace) -> Run:
+def work(db, run: Run, model: Model, rec: Recorder) -> Run:
     while run.status == "running":
         stop = budgets.before_turn(db, run)
         if stop:
             run.status = "stopped"
-            trace.line(stop.mark())
+            rec.stop(stop)
             break
         turn = model.next(run.messages, registry.openai_schemas())
         run.steps += 1
@@ -74,18 +71,17 @@ def work(db, run: Run, model: Model, trace: Trace) -> Run:
         budgets.record_spend(db, run, turn.tokens)
         if turn.call is None:
             run.reply, run.status = turn.text, "done"
-            trace.line(f"{run.identity.agent}: {turn.text}")
+            rec.reply(turn.text)
             break
         result = use_tool(db, run, turn.call)
-        trace.step(turn.call, result)
-        settle(run, turn.call, result, trace)
+        rec.step(turn.call, result)
+        settle(run, turn.call, result, rec)
     runs.save(db, run)
-    extra = "" if run.status == "done" else f" · {run.status}"
-    trace.footer(run.steps, run.tokens, extra)
+    rec.end()
     return run
 
 
-def settle(run: Run, call: Call, result: Result, trace: Trace) -> None:
+def settle(run: Run, call: Call, result: Result, rec: Recorder) -> None:
     """What a tool result means for the run: wait, stop, or go on."""
     if result.status == "paused":
         run.status, run.pending = "paused", {"tool": call.tool, "args": call.args}
@@ -93,66 +89,72 @@ def settle(run: Run, call: Call, result: Result, trace: Trace) -> None:
         run.status = "stopped"
     else:
         run.status, run.pending = "running", None
-        flag(trace, run, f"result of {call.tool}", json.dumps(result.data))
+        flag(rec, run, f"result of {call.tool}", json.dumps(result.data))
         remember(run, call, result)
 
 
-def flag(trace: Trace, run: Run, source: str, text: str) -> None:
+def flag(rec: Recorder, run: Run, source: str, text: str) -> None:
     """Warn about text that looks like an instruction. This never blocks."""
     found = untrusted.scan(text)
     if found:
         run.flags.append({"source": source, "found": found})
-        trace.line(untrusted.warning(source, found))
+        rec.flag(source, found)
 
 
 def use_tool(db, run: Run, call: Call) -> Result:
     """Every tool call goes through here. This is where the controls sit."""
     stop = budgets.before_call(db, run, call)
     if stop:
-        return Result("stopped", stop.mark(), {"stopped": stop.reason})
+        return Result("stopped", stop.mark(), {"stopped": stop.reason},
+                      decided=stop.decided())
     spec = registry.REGISTRY.get(call.tool)
-    if spec is None:
-        return Result("denied", f"✋ registry: no tool {call.tool}",
-                      {"error": "no tool"})
-    problems = registry.validate(spec, call.args)
+    problems = registry.validate(spec, call.args) if spec else ["no such tool"]
     if problems:
-        return Result("denied", f"✋ schema: {problems[0]}", {"error": problems})
+        return Result("denied", f"✋ schema: {problems[0]}", {"error": problems},
+                      decided={"by": "schema", "effect": "deny", "rule": "schema"})
     decision = guard.check(db, run.identity, call)
-    note = ""
+    decided = {"by": "guard", "effect": decision.effect, "rule": decision.rule}
     if decision.effect == "deny":
         return refused(call, decision)
+    note = ""
     if decision.effect == "ask":
-        blocked, note = check_approval(db, run, call, decision)
-        if blocked:
-            return blocked
+        gate = check_approval(db, run, call, decision)
+        if gate.status != "approved":
+            return gate
+        note, decided = gate.summary, gate.decided
     token = credentials.issue(run.identity, spec)
     ctx = tools.ToolContext(db, run.identity, token)
     result = tools.call_tool(ctx, call.tool, call.args)
-    result.note = note
+    result.note, result.decided = note, decided
     return result
 
 
-def check_approval(db, run: Run, call: Call, decision: Decision):
-    """Returns (a result that stops the call, or None) and a note for the trace."""
+def check_approval(db, run: Run, call: Call, decision: Decision) -> Result:
+    """Find or ask for the approval of this exact call. "approved" lets it run once."""
     approval = approvals.for_call(db, run.identity.run_id, call)
     if approval is None or approval["status"] == "used":  # single use: ask again
         approval = approvals.request(db, run, call, decision)
     status, aid = approval["status"], approval["id"]
+    decided = {"by": "approval", "effect": status, "rule": decision.rule,
+               "approval": aid}
     if status == "approved":
         approvals.use(db, aid)
-        return None, f"✔ approval {aid} · approved by {approval['decided_by']}"
+        note = f"✔ approval {aid} · approved by {approval['decided_by']}"
+        return Result("approved", note, {}, decided=decided)
     if status == "pending":
         mark = f"⏸ guard: ask {call.tool} · rule {decision.rule} · approval {aid}"
-        return Result("paused", mark, {"waiting": aid}), ""
+        return Result("paused", mark, {"waiting": aid},
+                      decided={**decided, "by": "guard", "effect": "ask"})
     by = f" by {approval['decided_by']}" if status == "rejected" else ""
     mark = f"✋ approval {aid} · {status}{by}"
-    return Result("denied", mark, {"denied": f"approval {status}"}), ""
+    return Result("denied", mark, {"denied": f"approval {status}"}, decided=decided)
 
 
 def refused(call: Call, decision: Decision) -> Result:
     mark = f"✋ guard: {decision.effect} {call.tool} · rule {decision.rule}"
     data = {"denied": decision.rule, "reason": decision.reason}
-    return Result("denied", mark, data)
+    decided = {"by": "guard", "effect": "deny", "rule": decision.rule}
+    return Result("denied", mark, data, decided=decided)
 
 
 def remember(run: Run, call: Call, result: Result) -> None:
