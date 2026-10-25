@@ -1,0 +1,12 @@
+{
+  "ticket": "T-1003-address",
+  "turns": [
+    {"call": {"tool": "change_address",
+              "args": {"customer_id": "C-101", "address": "7 Bay Street, Halifax"}},
+     "tokens": 660,
+     "if_denied": [
+       {"say": "Please write to us from the email on your account.", "tokens": 540}
+     ]},
+    {"say": "Your new address is saved.", "tokens": 540}
+  ]
+}

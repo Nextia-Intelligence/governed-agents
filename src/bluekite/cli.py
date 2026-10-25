@@ -9,7 +9,7 @@ from dataclasses import replace
 from bluekite import shop
 from bluekite.clock import FIXED
 from bluekite.agent import resume_run, run_ticket
-from bluekite.governance import approvals, audit, budgets, cedar_policy, guard
+from bluekite.governance import approvals, audit, budgets, cedar_policy, guard, metrics
 from bluekite.governance.replay import replay
 from bluekite.governance.identity import Identity
 from bluekite.governance.registry import REGISTRY
@@ -247,6 +247,23 @@ def cmd_replay(args) -> None:
     replay(events)
 
 
+def cmd_metrics(args) -> None:
+    events = audit.read_events()
+    m = metrics.summarize(events)
+    runs = sum(m["runs"].values())
+    print(f"metrics from the audit log · {runs} runs · {m['calls']} tool calls")
+    print(f"  runs             {metrics.counts(m['runs'])}")
+    print(f"  guard denials    {sum(m['denials'].values())}")
+    for rule, count in sorted(m["denials"].items()):
+        print(f"    {rule:<29}{count}")
+    print(f"  approvals asked  {m['asked']} · decided: "
+          f"{metrics.counts(m['decided']) or 'none yet'}")
+    stops = m["stops"]
+    print(f"  budget stops     {sum(stops.values())} · {metrics.counts(stops)}")
+    print(f"  injection flags  {m['flags']}")
+    print(f"  spend            {m['tokens']:,} tokens · ${cost(m['tokens']):.3f}")
+
+
 def command(sub, name: str, func, text: str) -> argparse.ArgumentParser:
     cmd = sub.add_parser(name, help=text)
     cmd.set_defaults(func=func)
@@ -308,6 +325,7 @@ def add_audit_commands(sub) -> None:
     log.add_argument("target", help="a run id, or: verify")
     again = command(sub, "replay", cmd_replay, "replay a run from the audit log")
     again.add_argument("run")
+    command(sub, "metrics", cmd_metrics, "how often each control acted")
 
 
 def parser() -> argparse.ArgumentParser:

@@ -49,3 +49,12 @@ def test_after_a_deny_sam_does_not_claim_the_refund(replay, db):
     assert lines.count(denied) == 2
     assert "on its way" not in run.reply
     assert shop.list_refunds(db) == [("O-5002", 2000)]  # still only the first one
+
+
+def test_when_both_refunds_are_denied_sam_claims_none(replay, db):
+    replay("T-1001")  # refunds the $20.00 that was left on O-5002
+    run, lines = replay("T-1001-twice")  # so both $15.00 refunds are denied
+    denied = "✋ guard: deny issue_refund · rule refund-within-order-total"
+    assert lines.count(denied) == 1
+    assert "refunded" not in run.reply
+    assert shop.list_refunds(db) == [("O-5002", 2000)]

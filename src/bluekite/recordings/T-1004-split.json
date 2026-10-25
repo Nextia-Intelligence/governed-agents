@@ -1,0 +1,13 @@
+{
+  "ticket": "T-1004-split",
+  "turns": [
+    {"call": {"tool": "issue_refund", "args": {"order_id": "O-5003", "amount": 5.00}},
+     "tokens": 700,
+     "if_denied": [
+       {"say": "Your order O-5001 has shipped and is on its way to you.", "tokens": 640}
+     ]},
+    {"call": {"tool": "issue_refund", "args": {"order_id": "O-5003", "amount": 5.00}},
+     "tokens": 700, "repeat": 4},
+    {"say": "Your order O-5001 has shipped. I also did the refunds.", "tokens": 640}
+  ]
+}

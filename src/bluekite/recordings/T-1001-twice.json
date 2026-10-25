@@ -1,0 +1,17 @@
+{
+  "ticket": "T-1001-twice",
+  "turns": [
+    {"call": {"tool": "issue_refund", "args": {"order_id": "O-5002", "amount": 15.00}},
+     "tokens": 610,
+     "if_denied": [
+       {"say": "I could not refund this. A team member will check your order.",
+        "tokens": 600}
+     ]},
+    {"call": {"tool": "issue_refund", "args": {"order_id": "O-5002", "amount": 15.00}},
+     "tokens": 640,
+     "if_denied": [
+       {"say": "I refunded $15.00. The rest needs a team member.", "tokens": 600}
+     ]},
+    {"say": "I refunded $15.00 two times.", "tokens": 600}
+  ]
+}

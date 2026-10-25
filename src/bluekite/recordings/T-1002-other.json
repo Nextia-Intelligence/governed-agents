@@ -1,0 +1,11 @@
+{
+  "ticket": "T-1002-other",
+  "turns": [
+    {"call": {"tool": "close_account", "args": {"customer_id": "C-102"}},
+     "tokens": 650,
+     "if_denied": [
+       {"say": "I can only act on your own account.", "tokens": 520}
+     ]},
+    {"say": "I closed the account C-102.", "tokens": 520}
+  ]
+}

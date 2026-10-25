@@ -1,0 +1,30 @@
+# The release gate. Make the "release gate" check required for the main branch
+# (Settings > Branches), so a change that breaks a control cannot be merged.
+name: governance
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  release-gate:
+    name: release gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --locked
+      - name: Attack suite (every attack must be contained)
+        run: uv run pytest -q tests/attacks
+      - name: Governance and policy tests
+        run: uv run pytest -q tests/test_governance.py tests/test_policy.py
+      - name: All other tests
+        run: uv run pytest -q
+      - name: A full replay leaves an intact audit log
+        run: |
+          uv run bluekite reset
+          uv run bluekite run --all
+          uv run bluekite audit verify
