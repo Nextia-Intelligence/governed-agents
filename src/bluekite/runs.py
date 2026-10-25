@@ -21,6 +21,7 @@ class Run:
     status: str = "running"  # running, paused, stopped or done
     pending: dict | None = None  # the tool call that waits for approval
     started: str = ""  # when the run started, for the time limit
+    flags: list = field(default_factory=list)  # untrusted text that was flagged
 
 
 def save(db, run: Run) -> None:

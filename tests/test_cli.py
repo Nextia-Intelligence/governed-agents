@@ -15,6 +15,14 @@ def test_ticket_lines_fit_the_screen(db, capsys):
     assert lines[0].startswith("T-1001  david.lee@example.com")
 
 
+def test_variant_ids_never_touch_the_emails(db, capsys):
+    lines = output(capsys, "tickets", "--variants")
+    assert all(len(line) <= 88 for line in lines)
+    for line in lines:
+        ticket_id, rest = line.split(" ", 1)
+        assert rest.startswith(" ")  # at least two spaces after every id
+
+
 def test_reset_and_run(db, capsys):
     assert output(capsys, "reset")[0].startswith("reset:")
     lines = output(capsys, "run", "T-1001")

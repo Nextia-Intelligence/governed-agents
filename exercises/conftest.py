@@ -5,7 +5,7 @@ import pytest
 from bluekite import clock, shop
 from bluekite.agent import run_ticket
 from bluekite.model import ReplayModel
-from bluekite.tickets import get_ticket
+from bluekite.tickets import get_ticket, prepare
 
 
 @pytest.fixture
@@ -26,7 +26,9 @@ def replay(db):
     def run(ticket_id: str, recording: str | None = None):
         lines = []
         model = ReplayModel(recording or ticket_id)
-        result = run_ticket(db, get_ticket(ticket_id), model, out=lines.append)
+        ticket = get_ticket(ticket_id)
+        prepare(db, ticket)
+        result = run_ticket(db, ticket, model, out=lines.append)
         return result, lines
 
     return run

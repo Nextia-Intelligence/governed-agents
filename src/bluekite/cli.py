@@ -15,7 +15,7 @@ from bluekite.governance.registry import REGISTRY
 from bluekite.model import Call, cost
 from bluekite.trace import show_call
 from bluekite.model import LiveModel, ReplayModel
-from bluekite.tickets import get_ticket, load_tickets
+from bluekite.tickets import get_ticket, load_tickets, prepare
 
 
 def make_model(ticket_id: str, live: bool):
@@ -28,7 +28,7 @@ def cmd_reset(args) -> None:
 
 
 def cmd_tickets(args) -> None:
-    tickets = load_tickets()
+    tickets = load_tickets(args.variants)
     width = max(len(ticket_id) for ticket_id in tickets) + 2  # ids never touch emails
     for ticket in tickets.values():
         text = ticket["text"].splitlines()[0]
@@ -45,7 +45,9 @@ def cmd_run(args) -> None:
     for n, ticket_id in enumerate(ids):
         if n:
             print()
-        run_ticket(db, get_ticket(ticket_id), make_model(ticket_id, args.live))
+        ticket = get_ticket(ticket_id)
+        prepare(db, ticket)
+        run_ticket(db, ticket, make_model(ticket_id, args.live))
 
 
 def set_limits(args) -> None:
@@ -208,7 +210,8 @@ def command(sub, name: str, func, text: str) -> argparse.ArgumentParser:
 
 def add_shop_commands(sub) -> None:
     command(sub, "reset", cmd_reset, "rebuild the shop database")
-    command(sub, "tickets", cmd_tickets, "list the practice tickets")
+    tickets = command(sub, "tickets", cmd_tickets, "list the practice tickets")
+    tickets.add_argument("--variants", action="store_true", help="also variants")
     run = command(sub, "run", cmd_run, "let Sam work on tickets")
     run.add_argument("tickets", nargs="*")
     run.add_argument("--all", action="store_true")

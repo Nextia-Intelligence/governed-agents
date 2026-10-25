@@ -3,7 +3,8 @@
 import json
 
 from bluekite import clock, runs, shop, tools
-from bluekite.governance import approvals, budgets, credentials, guard, registry
+from bluekite.governance import (approvals, budgets, credentials, guard, registry,
+                                 untrusted)
 from bluekite.governance.identity import Identity, identify
 from bluekite.governance.policy import Decision
 from bluekite.model import Call, Model
@@ -19,8 +20,10 @@ SYSTEM = (
 
 def first_messages(ticket: dict, identity: Identity) -> list[dict]:
     acting_for = identity.on_behalf_of or "nobody: the sender is not a customer"
-    system = f"{SYSTEM} You act for customer {acting_for}."
-    text = f"Ticket {ticket['id']} from {ticket['from']}:\n{ticket['text']}"
+    system = (f"{SYSTEM} You act for customer {acting_for}. "
+              f"{untrusted.RULE_FOR_THE_MODEL}")
+    body = untrusted.wrap(ticket["text"], "ticket")
+    text = f"Ticket {ticket['id']} from {ticket['from']}:\n{body}"
     return [{"role": "system", "content": system},
             {"role": "user", "content": text}]
 
@@ -38,6 +41,7 @@ def run_ticket(db, ticket: dict, model: Model, out=print) -> Run:
     trace = Trace(out)
     trace.line(f"ticket {ticket['id']} · agent {me.agent} · run {me.run_id} · "
                f"{me.label()}")
+    flag(trace, run, "ticket", ticket["text"])
     return work(db, run, model, trace)
 
 
@@ -53,7 +57,7 @@ def resume_run(db, run_id: str, model: Model, out=print) -> Run:
     call = Call(**run.pending)
     result = use_tool(db, run, call)
     trace.step(call, result)
-    settle(run, call, result)
+    settle(run, call, result, trace)
     return work(db, run, model, trace)
 
 
@@ -74,14 +78,14 @@ def work(db, run: Run, model: Model, trace: Trace) -> Run:
             break
         result = use_tool(db, run, turn.call)
         trace.step(turn.call, result)
-        settle(run, turn.call, result)
+        settle(run, turn.call, result, trace)
     runs.save(db, run)
     extra = "" if run.status == "done" else f" · {run.status}"
     trace.footer(run.steps, run.tokens, extra)
     return run
 
 
-def settle(run: Run, call: Call, result: Result) -> None:
+def settle(run: Run, call: Call, result: Result, trace: Trace) -> None:
     """What a tool result means for the run: wait, stop, or go on."""
     if result.status == "paused":
         run.status, run.pending = "paused", {"tool": call.tool, "args": call.args}
@@ -89,7 +93,16 @@ def settle(run: Run, call: Call, result: Result) -> None:
         run.status = "stopped"
     else:
         run.status, run.pending = "running", None
+        flag(trace, run, f"result of {call.tool}", json.dumps(result.data))
         remember(run, call, result)
+
+
+def flag(trace: Trace, run: Run, source: str, text: str) -> None:
+    """Warn about text that looks like an instruction. This never blocks."""
+    found = untrusted.scan(text)
+    if found:
+        run.flags.append({"source": source, "found": found})
+        trace.line(untrusted.warning(source, found))
 
 
 def use_tool(db, run: Run, call: Call) -> Result:
@@ -147,5 +160,6 @@ def remember(run: Run, call: Call, result: Result) -> None:
     call_id = f"call-{len(run.messages)}"
     run.messages.append({"role": "assistant", "id": call_id,
                          "call": {"tool": call.tool, "args": call.args}})
+    content = untrusted.wrap(json.dumps(result.data), f"tool {call.tool}")
     run.messages.append({"role": "tool", "id": call_id, "status": result.status,
-                         "content": json.dumps(result.data)})
+                         "content": content})
