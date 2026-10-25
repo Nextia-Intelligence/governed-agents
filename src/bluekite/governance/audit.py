@@ -12,6 +12,7 @@ from bluekite import clock, shop
 
 START = "0" * 64  # the "previous hash" of the first event
 EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
+PHONE = re.compile(r"(\+\d{1,3}[ -]?)?(\(\d{3}\)|\d{3})[ -]?\d{3}[ -]\d{4}")
 PERSONAL_ARGS = ("address",)  # arguments that are personal data
 TEXT_FIELDS = ("summary", "text", "note")  # free text that may hold personal data
 
@@ -59,6 +60,7 @@ def redact(db, details: dict) -> dict:
 
 def redact_text(db, text: str) -> str:
     text = EMAIL.sub("[email]", text)
+    text = PHONE.sub("[phone]", text)
     for row in db.execute("select name, address from customers"):
         text = text.replace(row["name"], "[name]").replace(row["address"], "[address]")
     return text
