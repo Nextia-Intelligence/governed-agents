@@ -2,8 +2,8 @@
 
 import json
 
-from bluekite import runs, shop, tools
-from bluekite.governance import approvals, credentials, guard, registry
+from bluekite import clock, runs, shop, tools
+from bluekite.governance import approvals, budgets, credentials, guard, registry
 from bluekite.governance.identity import Identity, identify
 from bluekite.governance.policy import Decision
 from bluekite.model import Call, Model
@@ -15,7 +15,6 @@ SYSTEM = (
     "You are Sam, the support agent of Blue Kite, a small online kite shop. "
     "Solve the customer's ticket with your tools, then reply to the customer."
 )
-MAX_TURNS = 50  # a backstop so a demo cannot run forever; real limits come later
 
 
 def first_messages(ticket: dict, identity: Identity) -> list[dict]:
@@ -29,7 +28,8 @@ def first_messages(ticket: dict, identity: Identity) -> list[dict]:
 def start_run(db, ticket: dict) -> Run:
     run_id = f"r-{shop.next_id(db, 'run'):04d}"
     identity = identify(db, "sam", run_id, ticket)
-    return Run(identity, ticket, messages=first_messages(ticket, identity))
+    return Run(identity, ticket, messages=first_messages(ticket, identity),
+               started=clock.now().isoformat())
 
 
 def run_ticket(db, ticket: dict, model: Model, out=print) -> Run:
@@ -49,39 +49,54 @@ def resume_run(db, run_id: str, model: Model, out=print) -> Run:
     trace = Trace(out)
     trace.line(f"resume run {run_id} · ticket {run.ticket['id']} · "
                f"{run.identity.label()}")
+    run.started = clock.now().isoformat()  # waiting for a person is not run time
     call = Call(**run.pending)
     result = use_tool(db, run, call)
     trace.step(call, result)
-    if result.status != "paused":
-        run.status, run.pending = "running", None
-        remember(run, call, result)
+    settle(run, call, result)
     return work(db, run, model, trace)
 
 
 def work(db, run: Run, model: Model, trace: Trace) -> Run:
-    while run.status == "running" and run.steps < MAX_TURNS:
+    while run.status == "running":
+        stop = budgets.before_turn(db, run)
+        if stop:
+            run.status = "stopped"
+            trace.line(stop.mark())
+            break
         turn = model.next(run.messages, registry.openai_schemas())
         run.steps += 1
         run.tokens += turn.tokens
+        budgets.record_spend(db, run, turn.tokens)
         if turn.call is None:
             run.reply, run.status = turn.text, "done"
             trace.line(f"{run.identity.agent}: {turn.text}")
             break
         result = use_tool(db, run, turn.call)
         trace.step(turn.call, result)
-        if result.status == "paused":
-            run.status = "paused"
-            run.pending = {"tool": turn.call.tool, "args": turn.call.args}
-        else:
-            remember(run, turn.call, result)
+        settle(run, turn.call, result)
     runs.save(db, run)
-    extra = " · paused" if run.status == "paused" else ""
+    extra = "" if run.status == "done" else f" · {run.status}"
     trace.footer(run.steps, run.tokens, extra)
     return run
 
 
+def settle(run: Run, call: Call, result: Result) -> None:
+    """What a tool result means for the run: wait, stop, or go on."""
+    if result.status == "paused":
+        run.status, run.pending = "paused", {"tool": call.tool, "args": call.args}
+    elif result.status == "stopped":
+        run.status = "stopped"
+    else:
+        run.status, run.pending = "running", None
+        remember(run, call, result)
+
+
 def use_tool(db, run: Run, call: Call) -> Result:
     """Every tool call goes through here. This is where the controls sit."""
+    stop = budgets.before_call(db, run, call)
+    if stop:
+        return Result("stopped", stop.mark(), {"stopped": stop.reason})
     spec = registry.REGISTRY.get(call.tool)
     if spec is None:
         return Result("denied", f"✋ registry: no tool {call.tool}",

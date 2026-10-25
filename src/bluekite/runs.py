@@ -7,7 +7,7 @@ from bluekite.governance.identity import Identity
 
 TABLE = """create table if not exists runs (id text primary key, status text,
            identity text, ticket text, messages text, pending text,
-           steps integer, tokens integer)"""
+           steps integer, tokens integer, started text)"""
 
 
 @dataclass
@@ -18,16 +18,17 @@ class Run:
     steps: int = 0
     tokens: int = 0
     reply: str | None = None
-    status: str = "running"  # running, paused, done (later: stopped)
+    status: str = "running"  # running, paused, stopped or done
     pending: dict | None = None  # the tool call that waits for approval
+    started: str = ""  # when the run started, for the time limit
 
 
 def save(db, run: Run) -> None:
     db.execute(TABLE)
-    db.execute("insert or replace into runs values (?,?,?,?,?,?,?,?)", (
+    db.execute("insert or replace into runs values (?,?,?,?,?,?,?,?,?)", (
         run.identity.run_id, run.status, json.dumps(asdict(run.identity)),
         json.dumps(run.ticket), json.dumps(run.messages), json.dumps(run.pending),
-        run.steps, run.tokens))
+        run.steps, run.tokens, run.started))
     db.commit()
 
 
@@ -38,4 +39,5 @@ def load(db, run_id: str) -> Run:
         raise SystemExit(f"no run {run_id}")
     return Run(Identity(**json.loads(row["identity"])), json.loads(row["ticket"]),
                json.loads(row["messages"]), row["steps"], row["tokens"],
-               status=row["status"], pending=json.loads(row["pending"]))
+               status=row["status"], pending=json.loads(row["pending"]),
+               started=row["started"])

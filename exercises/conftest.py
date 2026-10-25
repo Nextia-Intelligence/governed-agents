@@ -2,7 +2,7 @@
 
 import pytest
 
-from bluekite import shop
+from bluekite import clock, shop
 from bluekite.agent import run_ticket
 from bluekite.model import ReplayModel
 from bluekite.tickets import get_ticket
@@ -12,6 +12,7 @@ from bluekite.tickets import get_ticket
 def db(tmp_path, monkeypatch):
     """A fresh shop in a temporary folder, for every test."""
     monkeypatch.setenv("BLUEKITE_HOME", str(tmp_path))
+    monkeypatch.setattr(clock, "_waited", clock.timedelta())
     shop.reset()
     connection = shop.connect()
     yield connection

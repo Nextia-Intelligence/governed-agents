@@ -4,14 +4,15 @@ import argparse
 
 import json
 import os
+from dataclasses import replace
 
 from bluekite import shop
 from bluekite.clock import FIXED
 from bluekite.agent import resume_run, run_ticket
-from bluekite.governance import approvals, cedar_policy, guard
+from bluekite.governance import approvals, budgets, cedar_policy, guard
 from bluekite.governance.identity import Identity
 from bluekite.governance.registry import REGISTRY
-from bluekite.model import Call
+from bluekite.model import Call, cost
 from bluekite.trace import show_call
 from bluekite.model import LiveModel, ReplayModel
 from bluekite.tickets import get_ticket, load_tickets
@@ -39,11 +40,20 @@ def cmd_run(args) -> None:
     ids = list(load_tickets()) if args.all else args.tickets
     if not ids:
         raise SystemExit("give a ticket id, or --all")
+    set_limits(args)
     db = shop.connect()
     for n, ticket_id in enumerate(ids):
         if n:
             print()
         run_ticket(db, get_ticket(ticket_id), make_model(ticket_id, args.live))
+
+
+def set_limits(args) -> None:
+    """Limits for this command only, e.g. bluekite run T-1005 --max-steps 3."""
+    changes = {"steps_per_run": args.max_steps, "seconds_per_run": args.max_seconds,
+               "cost_per_run": args.max_cost}
+    changes = {key: value for key, value in changes.items() if value is not None}
+    budgets.LIMITS = replace(budgets.LIMITS, **changes)
 
 
 def cmd_changes(args) -> None:
@@ -160,10 +170,34 @@ def cmd_decide(args) -> None:
 
 
 def cmd_resume(args) -> None:
+    set_limits(args)
     db = shop.connect()
     ticket_id = json.loads(db.execute(
         "select ticket from runs where id = ?", (args.run,)).fetchone()[0])["id"]
     resume_run(db, args.run, make_model(ticket_id, args.live))
+
+
+def cmd_kill(args) -> None:
+    budgets.kill(shop.connect(), args.agent, args.by)
+    print(f"kill switch on for {args.agent} · every run stops before its next step")
+
+
+def cmd_unkill(args) -> None:
+    budgets.unkill(shop.connect(), args.agent)
+    print(f"kill switch off for {args.agent}")
+
+
+def cmd_budget(args) -> None:
+    db, limits = shop.connect(), budgets.LIMITS
+    spent = cost(budgets.spent_today(db, args.agent))
+    kill = budgets.killed(db, args.agent)
+    print(f"budget for {args.agent}")
+    print(f"  steps per run   {limits.steps_per_run}")
+    print(f"  time per run    {limits.seconds_per_run} s")
+    print(f"  cost per run    ${limits.cost_per_run:.3f}")
+    print(f"  cost per day    ${limits.cost_per_day:.2f} · spent today ${spent:.3f}")
+    print(f"  same call       at most {limits.same_call_max} times in a run")
+    print(f"  kill switch     {'on · ' + kill.reason if kill else 'off'}")
 
 
 def command(sub, name: str, func, text: str) -> argparse.ArgumentParser:
@@ -178,7 +212,15 @@ def add_shop_commands(sub) -> None:
     run = command(sub, "run", cmd_run, "let Sam work on tickets")
     run.add_argument("tickets", nargs="*")
     run.add_argument("--all", action="store_true")
+    add_limit_options(run)
     command(sub, "changes", cmd_changes, "what changed since the reset")
+
+
+def add_limit_options(cmd) -> None:
+    """Change a limit for this command only: steps, seconds or dollars per run."""
+    cmd.add_argument("--max-steps", type=int, metavar="N", help="steps per run")
+    cmd.add_argument("--max-seconds", type=int, metavar="S", help="seconds per run")
+    cmd.add_argument("--max-cost", type=float, metavar="USD", help="dollars per run")
 
 
 def add_guard_commands(sub) -> None:
@@ -200,6 +242,17 @@ def add_approval_commands(sub) -> None:
         decide.add_argument("--by", default="support-lead", help="who decides")
     resume = command(sub, "resume", cmd_resume, "go on with a paused run")
     resume.add_argument("run")
+    add_limit_options(resume)
+
+
+def add_budget_commands(sub) -> None:
+    for name, func, text in (("kill", cmd_kill, "stop an agent now"),
+                             ("unkill", cmd_unkill, "let a stopped agent run")):
+        switch = command(sub, name, func, text)
+        switch.add_argument("agent")
+        switch.add_argument("--by", default="support-lead", help="who")
+    budget = command(sub, "budget", cmd_budget, "limits and spend for an agent")
+    budget.add_argument("agent", nargs="?", default="sam")
 
 
 def parser() -> argparse.ArgumentParser:
@@ -210,6 +263,7 @@ def parser() -> argparse.ArgumentParser:
     add_shop_commands(sub)
     add_guard_commands(sub)
     add_approval_commands(sub)
+    add_budget_commands(sub)
     return p
 
 

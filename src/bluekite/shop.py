@@ -4,6 +4,8 @@ import os
 import sqlite3
 from pathlib import Path
 
+from bluekite import clock
+
 # All people and data here are fictional.
 CUSTOMERS = [  # id, name, email, address
     ("C-101", "Anna Silva", "anna.silva@example.com", "12 Lake Road, Toronto"),
@@ -131,6 +133,7 @@ def list_refunds(db) -> list[tuple[str, int]]:
 def refund(db, order_id: str, cents: int, run_id: str) -> None:
     order = get_order(db, order_id)
     if order["api_times_out"]:
+        clock.wait(5)
         raise ShopTimeout("shop api timed out after 5s")
     db.execute("insert into refunds values (?,?,?)", (order_id, cents, run_id))
     db.commit()

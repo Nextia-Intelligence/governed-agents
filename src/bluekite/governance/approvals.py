@@ -4,6 +4,7 @@ import hashlib
 import json
 
 from bluekite import clock, shop
+from bluekite.governance import budgets
 from bluekite.governance.policy import Decision
 from bluekite.model import Call
 from bluekite.money import dollars
@@ -87,6 +88,9 @@ def decide(db, approval_id: str, status: str, by: str) -> dict:
     approval = get(db, approval_id)
     if approval["status"] != "pending":
         raise ApprovalError(f"{approval_id} is {approval['status']}, not pending")
+    stopped = budgets.killed(db, approval["agent"])
+    if stopped and status == "approved":  # no approval while the kill switch is on
+        raise ApprovalError(f"cannot approve {approval_id}: {stopped.reason}")
     db.execute(
         "update approvals set status = ?, decided_by = ?, decided_at = ? "
         "where id = ?", (status, by, clock.now().isoformat(), approval_id))

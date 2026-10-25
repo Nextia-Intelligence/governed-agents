@@ -30,10 +30,11 @@ def test_t1004_the_hidden_refund_is_denied(replay, db):
     assert shop.list_refunds(db) == []
 
 
-def test_t1005_still_loops(replay):
+def test_t1005_the_loop_is_stopped(replay):
     run, lines = replay("T-1005")
-    assert run.steps == 40  # still open: section 5 fixes it
-    assert len(lines) <= 12
+    assert "⛔ budget: stop · loop · the same call 3 times" in lines
+    assert run.status == "stopped"
+    assert run.steps == 4
 
 
 def test_trace_shows_who_sam_acts_for(replay):
