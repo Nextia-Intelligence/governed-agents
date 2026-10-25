@@ -85,6 +85,8 @@ def for_call(db, run_id: str, call: Call) -> dict | None:
 
 def decide(db, approval_id: str, status: str, by: str) -> dict:
     approval = get(db, approval_id)
+    if not by or by == approval["agent"]:
+        raise ApprovalError(f"{by or 'nobody'} cannot approve: a person must decide")
     if approval["status"] != "pending":
         raise ApprovalError(f"{approval_id} is {approval['status']}, not pending")
     db.execute(
