@@ -1,0 +1,11 @@
+{
+  "ticket": "R-2002",
+  "turns": [
+    {"call": {"tool": "pay_invoice", "args": {"invoice_id": "INV-7781", "amount": 4800.00}},
+     "tokens": 700,
+     "if_denied": [
+       {"say": "I cannot pay this invoice. Finance will check it.", "tokens": 540}
+     ]},
+    {"say": "I paid invoice INV-7781 ($4,800.00).", "tokens": 540}
+  ]
+}

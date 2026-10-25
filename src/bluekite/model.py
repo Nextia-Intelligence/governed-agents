@@ -40,8 +40,8 @@ class ReplayModel:
     and "if_denied" (the turns to play when its tool call was refused).
     """
 
-    def __init__(self, recording: str):
-        data = json.loads((RECORDINGS / f"{recording}.json").read_text())
+    def __init__(self, recording: str, folder: Path = RECORDINGS):
+        data = json.loads((folder / f"{recording}.json").read_text())
         self.turns = expand(data["turns"])
 
     def next(self, messages: list[dict], tools: list[dict]) -> Turn:

@@ -1,0 +1,12 @@
+{
+  "ticket": "R-2001",
+  "turns": [
+    {"call": {"tool": "create_purchase_order",
+              "args": {"supplier_id": "SUP-1", "item": "Red kite", "quantity": 5000,
+                       "unit_price": 12.00}}, "tokens": 680,
+     "if_denied": [
+       {"say": "I could not place that order. A person will check it.", "tokens": 520}
+     ]},
+    {"say": "I ordered 5,000 red kites from Windline.", "tokens": 520}
+  ]
+}

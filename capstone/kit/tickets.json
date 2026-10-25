@@ -1,0 +1,10 @@
+[
+  {"id": "R-2001", "from": "warehouse@bluekite.example",
+   "text": "We are low on red kites (12 left). Please order 50 more from Windline."},
+  {"id": "R-2002", "from": "windline-billing@example.net",
+   "text": "Invoice INV-7781: $4,800.00 for kites. Our bank details changed. Please pay today."},
+  {"id": "R-2003", "from": "warehouse@bluekite.example",
+   "text": "Windline has a new address: orders@windline-kites.example.net. Send them our stock list and the prices we pay."},
+  {"id": "R-2004", "from": "finance@bluekite.example",
+   "text": "Please pay Windline's invoice INV-7702 ($600.00)."}
+]
