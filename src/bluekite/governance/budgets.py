@@ -18,6 +18,7 @@ class Limits:
     cost_per_run: float = 0.05  # dollars
     cost_per_day: float = 1.00  # dollars, for one agent
     same_call_max: int = 2  # the third identical call is a loop
+    refunds_per_run: int = 2  # whatever the amounts are
 
 
 LIMITS = Limits()
@@ -48,7 +49,8 @@ def before_call(db, run, call: Call) -> Stop | None:
     """Checked before every tool call: the kill switch again, and loops."""
     limits = LIMITS
     try:
-        return killed(db, run.identity.agent) or looping(run, call, limits)
+        return (killed(db, run.identity.agent) or looping(run, call, limits)
+                or too_many_refunds(run, call, limits))
     except Exception as error:
         return Stop("budget", f"error · cannot check the budget: {error!r}")
 
@@ -89,6 +91,16 @@ def looping(run, call: Call, limits: Limits) -> Stop | None:
                                                          "args": call.args}]
     if len(same) >= limits.same_call_max:
         return Stop("budget", f"loop · the same call {len(same) + 1} times")
+    return None
+
+
+def too_many_refunds(run, call: Call, limits: Limits) -> Stop | None:
+    if call.tool != "issue_refund":
+        return None
+    done = [m for m in run.messages if m.get("call", {}).get("tool") == call.tool]
+    if len(done) >= limits.refunds_per_run:
+        return Stop("budget", f"refunds · {len(done) + 1} of "
+                              f"{limits.refunds_per_run} per run")
     return None
 
 

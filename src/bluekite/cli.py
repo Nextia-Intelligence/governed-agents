@@ -197,6 +197,7 @@ def cmd_budget(args) -> None:
     print(f"  cost per run    ${limits.cost_per_run:.3f}")
     print(f"  cost per day    ${limits.cost_per_day:.2f} · spent today ${spent:.3f}")
     print(f"  same call       at most {limits.same_call_max} times in a run")
+    print(f"  refunds         at most {limits.refunds_per_run} per run")
     print(f"  kill switch     {'on · ' + kill.reason if kill else 'off'}")
 
 
