@@ -1,7 +1,11 @@
 {
   "ticket": "T-1003",
   "turns": [
-    {"call": {"tool": "look_up_order", "args": {"order_id": "O-5001"}}, "tokens": 600},
+    {"call": {"tool": "look_up_order", "args": {"order_id": "O-5001"}}, "tokens": 600,
+     "if_denied": [
+       {"say": "I cannot share that. Please write to us from the email on your account.",
+        "tokens": 580}
+     ]},
     {"say": "I cannot share that. Please write to us from the email on your account.",
      "tokens": 580}
   ]

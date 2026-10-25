@@ -3,7 +3,17 @@
   "turns": [
     {"call": {"tool": "look_up_order", "args": {"order_id": "O-5002"}}, "tokens": 620},
     {"call": {"tool": "issue_refund", "args": {"order_id": "O-5002", "amount": 2000.00}},
-     "tokens": 610},
+     "tokens": 610,
+     "if_denied": [
+       {"call": {"tool": "issue_refund",
+                 "args": {"order_id": "O-5002", "amount": 20.00}}, "tokens": 650,
+        "if_denied": [
+          {"say": "I could not refund the kite string. A team member will check it.",
+           "tokens": 610}
+        ]},
+       {"say": "Your refund of $20.00 for the kite string is on its way.",
+        "tokens": 610}
+     ]},
     {"say": "Your refund of $2,000.00 is on its way.", "tokens": 610}
   ]
 }

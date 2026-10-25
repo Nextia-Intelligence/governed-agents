@@ -2,7 +2,10 @@
   "ticket": "T-1002",
   "turns": [
     {"call": {"tool": "close_account", "args": {"customer_id": "C-103"}},
-     "tokens": 640},
+     "tokens": 640,
+     "if_denied": [
+       {"say": "A team member will contact you to close your account.", "tokens": 560}
+     ]},
     {"say": "Your account is closed. We delete your data after 30 days.", "tokens": 560}
   ]
 }

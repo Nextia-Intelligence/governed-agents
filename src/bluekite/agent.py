@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass, field
 
 from bluekite import shop, tools
-from bluekite.governance import credentials, registry
+from bluekite.governance import credentials, guard, registry
 from bluekite.governance.identity import Identity, identify
 from bluekite.model import Call, Model, Turn
 from bluekite.tools import Result
@@ -71,9 +71,20 @@ def use_tool(db, run: Run, call: Call) -> Result:
     problems = registry.validate(spec, call.args)
     if problems:
         return Result("denied", f"✋ schema: {problems[0]}", {"error": problems})
+    decision = guard.check(db, run.identity, call)
+    if decision.effect != "allow":
+        return refused(call, decision)
     token = credentials.issue(run.identity, spec)
     ctx = tools.ToolContext(db, run.identity, token)
     return tools.call_tool(ctx, call.tool, call.args)
+
+
+def refused(call: Call, decision) -> Result:
+    mark = f"✋ guard: {decision.effect} {call.tool} · rule {decision.rule}"
+    if decision.effect == "ask":
+        mark += " · denied for now"
+    data = {"denied": decision.rule, "reason": decision.reason}
+    return Result("denied", mark, data)
 
 
 def remember(run: Run, turn: Turn, result: Result) -> None:
