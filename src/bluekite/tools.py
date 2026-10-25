@@ -13,6 +13,7 @@ class Result:
     status: str  # "ok", "error" or "denied"
     summary: str  # one short line for the trace
     data: dict  # what the model sees
+    note: str = ""  # an extra line for the trace, for example an approval
 
 
 def plural(count: int, word: str) -> str:

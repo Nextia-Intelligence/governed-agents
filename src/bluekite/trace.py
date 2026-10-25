@@ -32,10 +32,12 @@ class Trace:
         blocked = result.status in ("denied", "paused", "stopped")
         summary = result.summary if blocked else f"← {result.summary}"
         pair = (show_call(call), summary)
-        if pair == self.last:
+        if pair == self.last and not result.note:
             self.folded += 1
             return
         self.line(f"→ {pair[0]}")
+        if result.note:
+            self.out(result.note)
         self.out(pair[1])
         self.last = pair
 

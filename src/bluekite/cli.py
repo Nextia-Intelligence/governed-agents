@@ -1,11 +1,14 @@
 """The `bluekite` command."""
 
 import argparse
+
 import json
+import os
 
 from bluekite import shop
-from bluekite.agent import run_ticket
-from bluekite.governance import cedar_policy, guard
+from bluekite.clock import FIXED
+from bluekite.agent import resume_run, run_ticket
+from bluekite.governance import approvals, cedar_policy, guard
 from bluekite.governance.identity import Identity
 from bluekite.governance.registry import REGISTRY
 from bluekite.model import Call
@@ -99,6 +102,8 @@ def explain(me: Identity, call: Call) -> None:
     show_attrs("context", request["context"])
     for e in entities:
         show_attrs(f"entity {cedar_value({'__entity': e['uid']})}", e["attrs"])
+    print("\nargs hash (what an approval of this call is bound to)")
+    print(f"  sha256 {approvals.args_hash(call)}")
 
 
 def show_attrs(title: str, attrs: dict) -> None:
@@ -114,32 +119,103 @@ def cedar_value(value) -> str:
     return json.dumps(value)
 
 
-def parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="bluekite", description="Sam at Blue Kite")
-    p.add_argument("--live", action="store_true", help="use a live model endpoint")
-    sub = p.add_subparsers(dest="command", required=True)
-    sub.add_parser("reset", help="rebuild the shop database").set_defaults(
-        func=cmd_reset)
-    sub.add_parser("tickets", help="list the practice tickets").set_defaults(
-        func=cmd_tickets)
-    run = sub.add_parser("run", help="let Sam work on tickets")
+def cmd_approvals(args) -> None:
+    found = approvals.list_all(shop.connect(), args.all)
+    if not found:
+        print("no approvals" if args.all else "no pending approvals")
+    for n, approval in enumerate(found):
+        if n:
+            print()
+        show_approval(approval)
+
+
+def show_approval(a: dict) -> None:
+    """What the approver sees: who, what, why, the evidence, and what it binds."""
+    call = Call(a["tool"], json.loads(a["args"]))
+    print(f"{a['id']}  {a['status']:<10}run {a['run_id']} · {a['agent']} for "
+          f"{a['on_behalf_of']} · ticket {a['ticket_id']}")
+    print(f"  what      {show_call(call)}")
+    print(f"  why       rule {a['rule']}")
+    print(f"            {a['reason']}")
+    for n, fact in enumerate(json.loads(a["evidence"])):
+        print(f"  {'evidence' if n == 0 else '':<10}{fact}")
+    expires = a["expires_at"].replace("T", " ")[:16]
+    print(f"  binds     args sha256 {a['args_hash'][:12]} · expires {expires}")
+    if a["decided_by"]:
+        decision = "rejected" if a["status"] == "rejected" else "approved"
+        print(f"  decided   {decision} by {a['decided_by']}")
+    if a["used_at"]:
+        print(f"  used      once, by run {a['run_id']} · it cannot be used again")
+
+
+def cmd_decide(args) -> None:
+    status = "approved" if args.command == "approve" else "rejected"
+    try:
+        approval = approvals.decide(shop.connect(), args.id, status, args.by)
+    except approvals.ApprovalError as error:
+        raise SystemExit(str(error))
+    call = Call(approval["tool"], json.loads(approval["args"]))
+    print(f"{approval['id']} {status} by {args.by} · {show_call(call)}")
+    print(f"next: bluekite resume {approval['run_id']}")
+
+
+def cmd_resume(args) -> None:
+    db = shop.connect()
+    ticket_id = json.loads(db.execute(
+        "select ticket from runs where id = ?", (args.run,)).fetchone()[0])["id"]
+    resume_run(db, args.run, make_model(ticket_id, args.live))
+
+
+def command(sub, name: str, func, text: str) -> argparse.ArgumentParser:
+    cmd = sub.add_parser(name, help=text)
+    cmd.set_defaults(func=func)
+    return cmd
+
+
+def add_shop_commands(sub) -> None:
+    command(sub, "reset", cmd_reset, "rebuild the shop database")
+    command(sub, "tickets", cmd_tickets, "list the practice tickets")
+    run = command(sub, "run", cmd_run, "let Sam work on tickets")
     run.add_argument("tickets", nargs="*")
     run.add_argument("--all", action="store_true")
-    run.set_defaults(func=cmd_run)
-    sub.add_parser("tools", help="Sam's tools, from the registry").set_defaults(
-        func=cmd_tools)
-    check = sub.add_parser("check", help="ask the guard about one tool call")
+    command(sub, "changes", cmd_changes, "what changed since the reset")
+
+
+def add_guard_commands(sub) -> None:
+    command(sub, "tools", cmd_tools, "Sam's tools, from the registry")
+    check = command(sub, "check", cmd_check, "ask the guard about one tool call")
     check.add_argument("tool")
     check.add_argument("args", nargs="*", help="key=value")
     check.add_argument("--for", dest="requester", help="customer id, e.g. C-102")
     check.add_argument("--explain", action="store_true",
-                       help="also show the facts and the Cedar request")
-    check.set_defaults(func=cmd_check)
-    sub.add_parser("changes", help="what changed since the reset").set_defaults(
-        func=cmd_changes)
+                       help="also show the facts, the Cedar request and the args hash")
+
+
+def add_approval_commands(sub) -> None:
+    queue = command(sub, "approvals", cmd_approvals, "the approval queue")
+    queue.add_argument("--all", action="store_true", help="also decided ones")
+    for name in ("approve", "reject"):
+        decide = command(sub, name, cmd_decide, f"{name} a pending approval")
+        decide.add_argument("id")
+        decide.add_argument("--by", default="support-lead", help="who decides")
+    resume = command(sub, "resume", cmd_resume, "go on with a paused run")
+    resume.add_argument("run")
+
+
+def parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog="bluekite", description="Sam at Blue Kite")
+    p.add_argument("--live", action="store_true", help="use a live model endpoint")
+    p.add_argument("--clock", help="a fixed time, e.g. 2026-10-25T10:00:00")
+    sub = p.add_subparsers(dest="command", required=True)
+    add_shop_commands(sub)
+    add_guard_commands(sub)
+    add_approval_commands(sub)
     return p
 
 
 def main(argv: list[str] | None = None) -> None:
     args = parser().parse_args(argv)
+    # Replay mode uses a fixed clock (stable output); live mode the real time.
+    if args.clock or "BLUEKITE_CLOCK" not in os.environ:
+        os.environ["BLUEKITE_CLOCK"] = args.clock or ("real" if args.live else FIXED)
     args.func(args)

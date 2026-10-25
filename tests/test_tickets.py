@@ -9,11 +9,13 @@ def test_t1001_refunds_only_what_was_sold(replay, db):
     assert shop.list_refunds(db) == [("O-5002", 2000)]  # $20.00
 
 
-def test_t1002_closing_needs_a_person(replay, db):
-    _, lines = replay("T-1002")
-    assert any("rule close-account-needs-human" in line for line in lines)
+def test_t1002_closing_waits_for_a_person(replay, db):
+    run, lines = replay("T-1002")
+    assert "⏸ guard: ask close_account · rule close-account-needs-human · " \
+        "approval A-0001" in lines
+    assert run.status == "paused"
     assert shop.get_customer(db, "C-102")["status"] == "open"
-    assert shop.get_customer(db, "C-103")["status"] == "open"  # section 4 asks
+    assert shop.get_customer(db, "C-103")["status"] == "open"
 
 
 def test_t1003_the_stranger_gets_no_address(replay, db):
