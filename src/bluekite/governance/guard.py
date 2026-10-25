@@ -31,6 +31,8 @@ def gather_facts(db, identity: Identity, call: Call) -> dict:
     if "order_id" in call.args:
         order = shop.get_order(db, call.args["order_id"])
         facts["owner"] = order["customer_id"] if order else None
+        owner = shop.get_customer(db, facts["owner"]) if order else None
+        facts["owner_status"] = owner["status"] if owner else "unknown"
         facts["refundable_cents"] = refundable(db, order)
     if "amount" in call.args:
         facts["amount_cents"] = to_cents(call.args["amount"])

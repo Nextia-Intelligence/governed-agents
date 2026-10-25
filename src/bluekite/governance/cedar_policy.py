@@ -28,7 +28,8 @@ def to_request(facts: dict) -> tuple[dict, list]:
     if "order_id" in facts:
         resource = f'Order::"{facts["order_id"]}"'
         attrs = {"owner": entity("Customer", facts["owner"] or "nobody"),
-                 "refundable_cents": facts["refundable_cents"]}
+                 "refundable_cents": facts["refundable_cents"],
+                 "owner_status": facts["owner_status"]}
         entities = [{"uid": {"type": "Order", "id": facts["order_id"]},
                      "attrs": attrs, "parents": []}]
     else:

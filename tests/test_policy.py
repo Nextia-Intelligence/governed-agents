@@ -19,6 +19,8 @@ ROWS = [  # requester, tool, args, effect, rule
      "deny", "own-orders-only"),
     ("C-103", "issue_refund", {"order_id": "O-5003", "amount": 45.0},
      "ask", "refund-over-25-needs-human"),
+    ("C-103", "issue_refund", {"order_id": "O-5003", "amount": 5.0},
+     "allow", "sams-tools-only"),
     ("C-103", "close_account", {"customer_id": "C-103"},
      "ask", "close-account-needs-human"),
     ("C-103", "close_account", {"customer_id": "C-102"}, "deny", "own-account-only"),
@@ -39,6 +41,14 @@ def who(requester: str | None) -> Identity:
 def test_policy_table(db, engine, requester, tool, args, effect, rule):
     decision = guard.check(db, who(requester), Call(tool, args), engine)
     assert (decision.effect, decision.rule) == (effect, rule)
+
+
+@pytest.mark.parametrize("engine", ["python", "cedar"])
+def test_closed_account_gets_no_refund(db, engine):
+    db.execute("update customers set status = 'closed' where id = 'C-103'")
+    call = Call("issue_refund", {"order_id": "O-5003", "amount": 5.0})
+    decision = guard.check(db, who("C-103"), call, engine)
+    assert decision.rule == "no-refund-on-closed-account"
 
 
 def test_earlier_refunds_count(db):

@@ -38,6 +38,9 @@ RULES = [
          lambda f: f["tool"] == "issue_refund"
          and f["amount_cents"] > f["refundable_cents"],
          "refund {amount} is more than the {refundable} left on order {order_id}"),
+    Rule("no-refund-on-closed-account", "deny",
+         lambda f: f["tool"] == "issue_refund" and f["owner_status"] != "open",
+         "the account of {owner} is closed: a person handles this refund"),
     Rule("refund-over-25-needs-human", "ask",
          lambda f: f["tool"] == "issue_refund" and f["amount_cents"] > ASK_ABOVE_CENTS,
          "refunds above $25.00 need a person"),

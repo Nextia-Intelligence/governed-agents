@@ -35,6 +35,10 @@ when { context has requester && resource != context.requester };
 forbid (principal, action == Action::"issue_refund", resource is Order)
 when { context.amount_cents > resource.refundable_cents };
 
+@id("no-refund-on-closed-account")
+forbid (principal, action == Action::"issue_refund", resource is Order)
+when { resource.owner_status != "open" };
+
 @id("refund-over-25-needs-human")
 @effect("ask")
 forbid (principal, action == Action::"issue_refund", resource)
