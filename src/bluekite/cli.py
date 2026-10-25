@@ -9,7 +9,8 @@ from dataclasses import replace
 from bluekite import shop
 from bluekite.clock import FIXED
 from bluekite.agent import resume_run, run_ticket
-from bluekite.governance import approvals, audit, budgets, cedar_policy, guard, metrics
+from bluekite.governance import (approvals, audit, budgets, cedar_policy, evidence,
+                                 guard, metrics)
 from bluekite.governance.replay import replay
 from bluekite.governance.identity import Identity
 from bluekite.governance.registry import REGISTRY
@@ -264,6 +265,15 @@ def cmd_metrics(args) -> None:
     print(f"  spend            {m['tokens']:,} tokens · ${cost(m['tokens']):.3f}")
 
 
+def cmd_evidence(args) -> None:
+    path, numbers = evidence.write(run_the_tests=not args.no_tests)
+    print(f"wrote {path.relative_to(evidence.ROOT)}")
+    print(f"  controls   {numbers['controls']}")
+    print(f"  tests      {numbers['tests']}")
+    chain = "intact" if numbers["chain_ok"] else "BROKEN"
+    print(f"  audit log  {numbers['events']} events · chain {chain}")
+
+
 def command(sub, name: str, func, text: str) -> argparse.ArgumentParser:
     cmd = sub.add_parser(name, help=text)
     cmd.set_defaults(func=func)
@@ -326,6 +336,8 @@ def add_audit_commands(sub) -> None:
     again = command(sub, "replay", cmd_replay, "replay a run from the audit log")
     again.add_argument("run")
     command(sub, "metrics", cmd_metrics, "how often each control acted")
+    pack = command(sub, "evidence", cmd_evidence, "write evidence/EVIDENCE.md")
+    pack.add_argument("--no-tests", action="store_true", help="do not run the tests")
 
 
 def parser() -> argparse.ArgumentParser:
