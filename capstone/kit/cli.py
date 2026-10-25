@@ -6,7 +6,7 @@ from pathlib import Path
 
 from bluekite import shop
 from bluekite.model import ReplayModel
-from kit import supply, tools
+from kit import supply
 from kit.agent import run_request
 
 HERE = Path(__file__).parent
@@ -24,7 +24,7 @@ def cmd_run(args) -> None:
         if n:
             print()
         model = ReplayModel(request_id, folder=HERE / "recordings")
-        run_request(db, requests[request_id], model, tools.call_tool)
+        run_request(db, requests[request_id], model)
 
 
 def cmd_changes(args) -> None:

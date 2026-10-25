@@ -4,7 +4,8 @@
     {"call": {"tool": "pay_invoice", "args": {"invoice_id": "INV-7702", "amount": 600.00}},
      "tokens": 680, "repeat": 4,
      "if_denied": [
-       {"say": "The payment did not go through. Finance will check it.", "tokens": 520}
+       {"say": "I could not confirm the payment. Finance will check it with Windline.",
+        "tokens": 520}
      ]},
     {"say": "The payment system is slow. I tried four times.", "tokens": 520}
   ]
